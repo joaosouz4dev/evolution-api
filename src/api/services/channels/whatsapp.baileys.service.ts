@@ -139,6 +139,8 @@ import { ChannelStartupService } from './../channel.service';
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
 export class BaileysStartupService extends ChannelStartupService {
+  lastCalledGroupCache: number;
+  cooldownGroupCache: number;
   constructor(
     public readonly configService: ConfigService,
     public readonly eventEmitter: EventEmitter2,
@@ -151,8 +153,9 @@ export class BaileysStartupService extends ChannelStartupService {
     super(configService, eventEmitter, prismaRepository, chatwootCache);
     this.instance.qrcode = { count: 0 };
     this.recoveringMessages();
-
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
+    this.lastCalledGroupCache = 0;
+    this.cooldownGroupCache = 1000; // Cooldown time in milliseconds (1 second)
   }
 
   private authStateProvider: AuthStateProvider;
@@ -208,14 +211,6 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
-  private async forceUpdateGroupMetadataCache() {
-    this.logger.verbose('Force update group metadata cache');
-    const groups = await this.fetchAllGroups({ getParticipants: 'false' });
-
-    for (const group of groups) {
-      await this.updateGroupMetadataCache(group.id);
-    }
-  }
 
   public get connectionStatus() {
     return this.stateConnection;
@@ -1773,24 +1768,24 @@ export class BaileysStartupService extends ChannelStartupService {
     options?: Options,
     isIntegration = false,
   ) {
-    const isWA = (await this.whatsappNumber({ numbers: [number] }))?.shift();
+    const sender = this.createJid(number);
 
-    if (!isWA.exists && !isJidGroup(isWA.jid) && !isWA.jid.includes('@broadcast')) {
-      if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot.enabled) {
-        const body = {
-          key: { remoteJid: isWA.jid },
-        };
-
-        this.chatwootService.eventWhatsapp(
-          'contact.is_not_in_wpp',
-          { instanceName: this.instance.name, instanceId: this.instance.id },
-          body,
-        );
+    if (!isJidGroup(sender)) {
+      const isWA = (await this.whatsappNumber({ numbers: [number] }))?.shift();
+      if (!isWA.exists && !isJidGroup(isWA.jid) && !isWA.jid.includes('@broadcast')) {
+        if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot.enabled) {
+          const body = {
+            key: { remoteJid: isWA.jid },
+          };
+          this.chatwootService.eventWhatsapp(
+            'contact.is_not_in_wpp',
+            { instanceName: this.instance.name, instanceId: this.instance.id },
+            body,
+          );
+        }
+        throw new BadRequestException(isWA);
       }
-      throw new BadRequestException(isWA);
     }
-
-    const sender = isWA.jid;
 
     this.logger.verbose(`Sending message to ${sender}`);
 
@@ -3144,6 +3139,14 @@ export class BaileysStartupService extends ChannelStartupService {
 
   // Group
   private async updateGroupMetadataCache(groupJid: string) {
+    const now = Date.now();
+    if (now - this.lastCalledGroupCache < this.cooldownGroupCache) {
+      this.logger.warn(`Call to updateGroupMetadataCache for ${groupJid} ignored due to rate limiting.`);
+      return null;
+    }
+    
+    this.lastCalledGroupCache = now;
+
     try {
       const meta = await this.client.groupMetadata(groupJid);
 
@@ -3176,6 +3179,14 @@ export class BaileysStartupService extends ChannelStartupService {
 
     console.log(`Cache request for group: ${groupJid} - not found`);
     return await this.updateGroupMetadataCache(groupJid);
+  }
+
+  private async getGroupMetadata(groupJid: string) {
+    let group = null;
+    const cache = this.configService.get<CacheConf>('CACHE');
+    if (!cache.REDIS.ENABLED && !cache.LOCAL.ENABLED) group = await this.findGroup({ groupJid: groupJid }, 'inner');
+    else group = await this.getGroupMetadataCache(groupJid);
+    return group;
   }
 
   public async createGroup(create: CreateGroupDto) {
@@ -3266,7 +3277,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async findGroup(id: GroupJid, reply: 'inner' | 'out' = 'out') {
     try {
-      const group = await this.client.groupMetadata(id.groupJid);
+      const group = await this.getGroupMetadata(id.groupJid);
 
       const picture = await this.profilePicture(group.id);
 
@@ -3390,7 +3401,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async findParticipants(id: GroupJid) {
     try {
-      const participants = (await this.client.groupMetadata(id.groupJid)).participants;
+      const participants = (await this.getGroupMetadata(id.groupJid)).participants;
       const contacts = await this.prismaRepository.contact.findMany({
         where: {
           instanceId: this.instanceId,
