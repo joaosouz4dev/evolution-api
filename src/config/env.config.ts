@@ -37,6 +37,7 @@ export type ProviderSession = {
 
 export type SaveData = {
   INSTANCE: boolean;
+  HISTORIC: boolean;
   NEW_MESSAGE: boolean;
   MESSAGE_UPDATE: boolean;
   CONTACTS: boolean;
@@ -190,6 +191,7 @@ export type Chatwoot = {
     PLACEHOLDER_MEDIA_MESSAGE: boolean;
   };
 };
+export type Openai = { ENABLED: boolean; API_KEY_GLOBAL?: string };
 
 export type S3 = {
   ACCESS_KEY: string;
@@ -223,6 +225,7 @@ export interface Env {
   QRCODE: QrCode;
   TYPEBOT: Typebot;
   CHATWOOT: Chatwoot;
+  OPENAI: Openai;
   CACHE: CacheConf;
   S3?: S3;
   AUTHENTICATION: Auth;
@@ -288,6 +291,7 @@ export class ConfigService {
           MESSAGE_UPDATE: process.env?.DATABASE_SAVE_MESSAGE_UPDATE === 'true',
           CONTACTS: process.env?.DATABASE_SAVE_DATA_CONTACTS === 'true',
           CHATS: process.env?.DATABASE_SAVE_DATA_CHATS === 'true',
+          HISTORIC: process.env?.DATABASE_SAVE_DATA_HISTORIC === 'true',
           LABELS: process.env?.DATABASE_SAVE_DATA_LABELS === 'true',
         },
       },
@@ -428,6 +432,10 @@ export class ConfigService {
           },
           PLACEHOLDER_MEDIA_MESSAGE: process.env?.CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE === 'true',
         },
+      },
+      OPENAI: {
+        ENABLED: process.env?.OPENAI_ENABLED === 'true',
+        API_KEY_GLOBAL: process.env?.OPENAI_API_KEY_GLOBAL || null,
       },
       CACHE: {
         REDIS: {

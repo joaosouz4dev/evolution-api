@@ -1,4 +1,19 @@
-# 2.0.1-beta (beta)
+# 2.0.2-beta (2024-07-18 21:33)
+
+### Feature
+
+* Open AI implemented
+
+### Fixed
+
+* Fixed the function of saving or not saving data in the database
+* Resolve not find name
+* Removed DEL_TEMP_INSTANCES as it is not being used
+* Fixed global exchange name
+* Add apiKey and serverUrl to prefilledVariables in typebot service
+* Correction in start typebot, if it doesn't exist, create it
+
+# 2.0.1-beta (2024-07-17 17:01)
 
 ### Fixed
 

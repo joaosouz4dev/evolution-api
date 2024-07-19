@@ -1,7 +1,7 @@
 import { Message, Typebot as TypebotModel, TypebotSession } from '@prisma/client';
 import axios from 'axios';
 
-import { ConfigService, S3, Typebot } from '../../../../config/env.config';
+import { Auth, ConfigService, HttpServer, S3, Typebot } from '../../../../config/env.config';
 import { Logger } from '../../../../config/logger.config';
 import { sendTelemetry } from '../../../../utils/sendTelemetry';
 import { InstanceDto } from '../../../dto/instance.dto';
@@ -666,17 +666,6 @@ export class TypebotService {
       }
     }
 
-    const findTypebot = await this.prismaRepository.typebot.findFirst({
-      where: {
-        url: url,
-        typebot: typebot,
-      },
-    });
-
-    if (!findTypebot) {
-      throw new Error('Typebot not found');
-    }
-
     if (
       !expire ||
       !keywordFinish ||
@@ -710,6 +699,8 @@ export class TypebotService {
     const prefilledVariables = {
       remoteJid: remoteJid,
       instanceName: instance.instanceName,
+      serverUrl: this.configService.get<HttpServer>('SERVER').URL,
+      apiKey: this.configService.get<Auth>('AUTHENTICATION').API_KEY.KEY,
     };
 
     if (variables?.length) {
@@ -719,6 +710,31 @@ export class TypebotService {
     }
 
     if (startSession) {
+      let findTypebot: any = await this.prismaRepository.typebot.findFirst({
+        where: {
+          url: url,
+          typebot: typebot,
+        },
+      });
+
+      if (!findTypebot) {
+        findTypebot = await this.prismaRepository.typebot.create({
+          data: {
+            enabled: true,
+            url: url,
+            typebot: typebot,
+            expire: expire,
+            keywordFinish: keywordFinish,
+            delayMessage: delayMessage,
+            unknownMessage: unknownMessage,
+            listeningFromMe: listeningFromMe,
+            stopBotFromMe: stopBotFromMe,
+            keepOpen: keepOpen,
+            instanceId: instance.instanceId,
+          },
+        });
+      }
+
       await this.prismaRepository.typebotSession.deleteMany({
         where: {
           remoteJid: remoteJid,
@@ -904,6 +920,8 @@ export class TypebotService {
             remoteJid: data.remoteJid,
             pushName: data.pushName || data.prefilledVariables?.pushName || '',
             instanceName: instance.instanceName,
+            serverUrl: this.configService.get<HttpServer>('SERVER').URL,
+            apiKey: this.configService.get<Auth>('AUTHENTICATION').API_KEY.KEY,
           },
         };
       } else {
@@ -917,6 +935,8 @@ export class TypebotService {
               remoteJid: data.remoteJid,
               pushName: data.pushName || data.prefilledVariables?.pushName || '',
               instanceName: instance.instanceName,
+              serverUrl: this.configService.get<HttpServer>('SERVER').URL,
+              apiKey: this.configService.get<Auth>('AUTHENTICATION').API_KEY.KEY,
             },
           },
         };
@@ -936,6 +956,8 @@ export class TypebotService {
               remoteJid: data.remoteJid,
               pushName: data.pushName || '',
               instanceName: instance.instanceName,
+              serverUrl: this.configService.get<HttpServer>('SERVER').URL,
+              apiKey: this.configService.get<Auth>('AUTHENTICATION').API_KEY.KEY,
             },
             awaitUser: false,
             typebotId: data.typebotId,

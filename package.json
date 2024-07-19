@@ -1,6 +1,6 @@
 {
   "name": "evolution-api",
-  "version": "2.0.1-beta",
+  "version": "2.0.2-beta",
   "description": "Rest api for communication with WhatsApp",
   "main": "./dist/src/main.js",
   "scripts": {
@@ -80,6 +80,7 @@
     "node-cache": "^5.1.2",
     "node-mime-types": "^1.1.0",
     "node-windows": "^1.0.0-beta.8",
+    "openai": "^4.52.7",
     "parse-bmfont-xml": "^1.1.4",
     "pg": "^8.11.3",
     "pino": "^8.11.0",

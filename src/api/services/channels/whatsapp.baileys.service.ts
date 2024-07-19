@@ -69,6 +69,7 @@ import {
   ConfigSessionPhone,
   Database,
   Log,
+  Openai,
   ProviderSession,
   QrCode,
   S3,
@@ -690,9 +691,10 @@ export class BaileysStartupService extends ChannelStartupService {
       this.sendDataWebhook(Events.CHATS_UPSERT, chatsToInsert);
 
       if (chatsToInsert.length > 0) {
-        await this.prismaRepository.chat.createMany({
-          data: chatsToInsert,
-        });
+        if (this.configService.get<Database>('DATABASE').SAVE_DATA.CHATS)
+          await this.prismaRepository.chat.createMany({
+            data: chatsToInsert,
+          });
       }
     },
 
@@ -749,10 +751,11 @@ export class BaileysStartupService extends ChannelStartupService {
         if (contactsRaw.length > 0) this.sendDataWebhook(Events.CONTACTS_UPSERT, contactsRaw);
 
         if (contactsRaw.length > 0) {
-          await this.prismaRepository.contact.createMany({
-            data: contactsRaw,
-            skipDuplicates: true,
-          });
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.CONTACTS)
+            await this.prismaRepository.contact.createMany({
+              data: contactsRaw,
+              skipDuplicates: true,
+            });
         }
 
         if (
@@ -872,12 +875,14 @@ export class BaileysStartupService extends ChannelStartupService {
 
         this.sendDataWebhook(Events.CHATS_SET, chatsRaw);
 
-        const chatsSaved = await this.prismaRepository.chat.createMany({
-          data: chatsRaw,
-          skipDuplicates: true,
-        });
+        if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
+          const chatsSaved = await this.prismaRepository.chat.createMany({
+            data: chatsRaw,
+            skipDuplicates: true,
+          });
 
-        console.log('chatsSaved', chatsSaved);
+          console.log('chatsSaved', chatsSaved);
+        }
 
         const messagesRaw: any[] = [];
 
@@ -934,12 +939,14 @@ export class BaileysStartupService extends ChannelStartupService {
 
         this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRaw]);
 
-        const messagesSaved = await this.prismaRepository.message.createMany({
-          data: messagesRaw,
-          skipDuplicates: true,
-        });
+        if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
+          const messagesSaved = await this.prismaRepository.message.createMany({
+            data: messagesRaw,
+            skipDuplicates: true,
+          });
 
-        console.log('messagesSaved', messagesSaved);
+          console.log('messagesSaved', messagesSaved);
+        }
 
         if (
           this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
@@ -1078,62 +1085,64 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          const msg = await this.prismaRepository.message.create({
-            data: messageRaw,
-          });
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
+            const msg = await this.prismaRepository.message.create({
+              data: messageRaw,
+            });
 
-          if (isMedia) {
-            if (this.configService.get<S3>('S3').ENABLE) {
-              try {
-                const message: any = received;
-                const media = await this.getBase64FromMediaMessage(
-                  {
-                    message,
-                  },
-                  true,
-                );
+            if (isMedia) {
+              if (this.configService.get<S3>('S3').ENABLE) {
+                try {
+                  const message: any = received;
+                  const media = await this.getBase64FromMediaMessage(
+                    {
+                      message,
+                    },
+                    true,
+                  );
 
-                const { buffer, mediaType, fileName, size } = media;
+                  const { buffer, mediaType, fileName, size } = media;
 
-                const mimetype = mime.lookup(fileName).toString();
+                  const mimetype = mime.lookup(fileName).toString();
 
-                const fullName = join(`${this.instance.id}`, received.key.remoteJid, mediaType, fileName);
+                  const fullName = join(`${this.instance.id}`, received.key.remoteJid, mediaType, fileName);
 
-                await s3Service.uploadFile(fullName, buffer, size.fileLength, {
-                  'Content-Type': mimetype,
-                });
+                  await s3Service.uploadFile(fullName, buffer, size.fileLength, {
+                    'Content-Type': mimetype,
+                  });
 
-                await this.prismaRepository.media.create({
-                  data: {
-                    messageId: msg.id,
-                    instanceId: this.instanceId,
-                    type: mediaType,
-                    fileName: fullName,
-                    mimetype,
-                  },
-                });
+                  await this.prismaRepository.media.create({
+                    data: {
+                      messageId: msg.id,
+                      instanceId: this.instanceId,
+                      type: mediaType,
+                      fileName: fullName,
+                      mimetype,
+                    },
+                  });
 
-                const mediaUrl = await s3Service.getObjectUrl(fullName);
+                  const mediaUrl = await s3Service.getObjectUrl(fullName);
 
-                messageRaw.message.mediaUrl = mediaUrl;
-              } catch (error) {
-                this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
-              }
-            } else {
-              if (this.localWebhook.webhookBase64 === true) {
-                const buffer = await downloadMediaMessage(
-                  { key: received.key, message: received?.message },
-                  'buffer',
-                  {},
-                  {
-                    logger: P({ level: 'error' }) as any,
-                    reuploadRequest: this.client.updateMediaMessage,
-                  },
-                );
-
-                messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+                  messageRaw.message.mediaUrl = mediaUrl;
+                } catch (error) {
+                  this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
+                }
               }
             }
+          }
+
+          if (isMedia && !this.configService.get<S3>('S3').ENABLE && this.localWebhook.webhookBase64 === true) {
+            const buffer = await downloadMediaMessage(
+              { key: received.key, message: received?.message },
+              'buffer',
+              {},
+              {
+                logger: P({ level: 'error' }) as any,
+                reuploadRequest: this.client.updateMediaMessage,
+              },
+            );
+
+            messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
           }
 
           this.logger.log(messageRaw);
@@ -1144,6 +1153,17 @@ export class BaileysStartupService extends ChannelStartupService {
             if (type === 'notify') {
               if (messageRaw.messageType !== 'reactionMessage')
                 await this.typebotService.sendTypebot(
+                  { instanceName: this.instance.name, instanceId: this.instanceId },
+                  messageRaw.key.remoteJid,
+                  messageRaw,
+                );
+            }
+          }
+
+          if (this.configService.get<Openai>('OPENAI').ENABLED) {
+            if (type === 'notify') {
+              if (messageRaw.messageType !== 'reactionMessage')
+                await this.openaiService.sendOpenai(
                   { instanceName: this.instance.name, instanceId: this.instanceId },
                   messageRaw.key.remoteJid,
                   messageRaw,
@@ -1193,9 +1213,10 @@ export class BaileysStartupService extends ChannelStartupService {
 
           this.sendDataWebhook(Events.CONTACTS_UPSERT, contactRaw);
 
-          await this.prismaRepository.contact.create({
-            data: contactRaw,
-          });
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.CONTACTS)
+            await this.prismaRepository.contact.create({
+              data: contactRaw,
+            });
         }
       } catch (error) {
         this.logger.error(error);
@@ -1268,9 +1289,10 @@ export class BaileysStartupService extends ChannelStartupService {
               instanceId: this.instanceId,
             };
 
-            await this.prismaRepository.messageUpdate.create({
-              data: message,
-            });
+            if (this.configService.get<Database>('DATABASE').SAVE_DATA.MESSAGE_UPDATE)
+              await this.prismaRepository.messageUpdate.create({
+                data: message,
+              });
 
             if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot.enabled) {
               this.chatwootService.eventWhatsapp(
@@ -1296,9 +1318,10 @@ export class BaileysStartupService extends ChannelStartupService {
 
           this.sendDataWebhook(Events.MESSAGES_UPDATE, message);
 
-          await this.prismaRepository.messageUpdate.create({
-            data: message,
-          });
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.MESSAGE_UPDATE)
+            await this.prismaRepository.messageUpdate.create({
+              data: message,
+            });
         }
       }
     },
@@ -1347,15 +1370,16 @@ export class BaileysStartupService extends ChannelStartupService {
 
       const labelName = label.name.replace(/[^\x20-\x7E]/g, '');
       if (!savedLabel || savedLabel.color !== `${label.color}` || savedLabel.name !== labelName) {
-        await this.prismaRepository.label.create({
-          data: {
-            color: `${label.color}`,
-            name: labelName,
-            labelId: label.id,
-            predefinedId: label.predefinedId,
-            instanceId: this.instanceId,
-          },
-        });
+        if (this.configService.get<Database>('DATABASE').SAVE_DATA.LABELS)
+          await this.prismaRepository.label.create({
+            data: {
+              color: `${label.color}`,
+              name: labelName,
+              labelId: label.id,
+              predefinedId: label.predefinedId,
+              instanceId: this.instanceId,
+            },
+          });
         this.sendDataWebhook(Events.LABELS_EDIT, { ...label, instance: this.instance.name });
       }
     },
@@ -1920,9 +1944,10 @@ export class BaileysStartupService extends ChannelStartupService {
           );
       }
 
-      await this.prismaRepository.message.create({
-        data: messageRaw,
-      });
+      if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE)
+        await this.prismaRepository.message.create({
+          data: messageRaw,
+        });
 
       return messageSent;
     } catch (error) {

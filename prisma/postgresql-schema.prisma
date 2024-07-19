@@ -77,6 +77,10 @@ model Instance {
   TypebotSession   TypebotSession[]
   TypebotSetting   TypebotSetting?
   Media            Media[]
+  OpenaiCreds      OpenaiCreds?
+  OpenaiBot        OpenaiBot[]
+  OpenaiSession    OpenaiSession[]
+  OpenaiSetting    OpenaiSetting?
 }
 
 model Session {
@@ -129,6 +133,8 @@ model Message {
   MessageUpdate                MessageUpdate[]
   TypebotSession               TypebotSession? @relation(fields: [typebotSessionId], references: [id])
   Media                        Media?
+  OpenaiSession                OpenaiSession?  @relation(fields: [openaiSessionId], references: [id])
+  openaiSessionId              String?
 }
 
 model MessageUpdate {
@@ -324,4 +330,83 @@ model Media {
   messageId  String    @unique
   Instance   Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   instanceId String
+}
+
+model OpenaiCreds {
+  id              String          @id @default(cuid())
+  apiKey          String          @unique @db.VarChar(255)
+  createdAt       DateTime?       @default(now()) @db.Timestamp
+  updatedAt       DateTime        @updatedAt @db.Timestamp
+  Instance        Instance        @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId      String          @unique
+  OpenaiAssistant OpenaiBot[]
+  OpenaiSetting   OpenaiSetting[]
+}
+
+model OpenaiBot {
+  id                String           @id @default(cuid())
+  enabled           Boolean          @default(true) @db.Boolean
+  botType           String           @db.VarChar(100)
+  assistantId       String?          @unique @db.VarChar(255)
+  model             String?          @db.VarChar(100)
+  systemMessages    Json?            @db.JsonB
+  assistantMessages Json?            @db.JsonB
+  userMessages      Json?            @db.JsonB
+  maxTokens         Int?             @db.Integer
+  expire            Int?             @default(0) @db.Integer
+  keywordFinish     String?          @db.VarChar(100)
+  delayMessage      Int?             @db.Integer
+  unknownMessage    String?          @db.VarChar(100)
+  listeningFromMe   Boolean?         @default(false) @db.Boolean
+  stopBotFromMe     Boolean?         @default(false) @db.Boolean
+  keepOpen          Boolean?         @default(false) @db.Boolean
+  debounceTime      Int?             @db.Integer
+  ignoreJids        Json?
+  triggerType       TriggerType?
+  triggerOperator   TriggerOperator?
+  triggerValue      String?
+  createdAt         DateTime?        @default(now()) @db.Timestamp
+  updatedAt         DateTime         @updatedAt @db.Timestamp
+  OpenaiCreds       OpenaiCreds      @relation(fields: [openaiCredsId], references: [id], onDelete: Cascade)
+  openaiCredsId     String
+  Instance          Instance         @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId        String
+  OpenaiSession     OpenaiSession[]
+  OpenaiSetting     OpenaiSetting[]
+}
+
+model OpenaiSession {
+  id          String               @id @default(cuid())
+  sessionId   String               @db.VarChar(255)
+  remoteJid   String               @db.VarChar(100)
+  status      TypebotSessionStatus
+  awaitUser   Boolean              @default(false) @db.Boolean
+  createdAt   DateTime?            @default(now()) @db.Timestamp
+  updatedAt   DateTime             @updatedAt @db.Timestamp
+  OpenaiBot   OpenaiBot            @relation(fields: [openaiBotId], references: [id], onDelete: Cascade)
+  openaiBotId String
+  Message     Message[]
+  Instance    Instance             @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId  String
+}
+
+model OpenaiSetting {
+  id               String       @id @default(cuid())
+  expire           Int?         @default(0) @db.Integer
+  keywordFinish    String?      @db.VarChar(100)
+  delayMessage     Int?         @db.Integer
+  unknownMessage   String?      @db.VarChar(100)
+  listeningFromMe  Boolean?     @default(false) @db.Boolean
+  stopBotFromMe    Boolean?     @default(false) @db.Boolean
+  keepOpen         Boolean?     @default(false) @db.Boolean
+  debounceTime     Int?         @db.Integer
+  ignoreJids       Json?
+  createdAt        DateTime?    @default(now()) @db.Timestamp
+  updatedAt        DateTime     @updatedAt @db.Timestamp
+  OpenaiCreds      OpenaiCreds? @relation(fields: [openaiCredsId], references: [id])
+  openaiCredsId    String
+  Fallback         OpenaiBot?   @relation(fields: [openaiIdFallback], references: [id])
+  openaiIdFallback String?      @db.VarChar(100)
+  Instance         Instance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instanceId       String       @unique
 }
