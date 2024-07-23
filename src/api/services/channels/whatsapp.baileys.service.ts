@@ -138,6 +138,7 @@ import { CacheService } from './../cache.service';
 import { ChannelStartupService } from './../channel.service';
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
+const verifyNumbersCache = new CacheService(new CacheEngine(configService, 'verifyNumbers').getEngine());
 
 export class BaileysStartupService extends ChannelStartupService {
   lastCalledGroupCache: number;
@@ -156,7 +157,7 @@ export class BaileysStartupService extends ChannelStartupService {
     this.recoveringMessages();
     this.authStateProvider = new AuthStateProvider(this.providerFiles);
     this.lastCalledGroupCache = 0;
-    this.cooldownGroupCache = 1000; // Cooldown time in milliseconds (1 second)
+    this.cooldownGroupCache = 3600000 * 12;
   }
 
   private authStateProvider: AuthStateProvider;
@@ -211,7 +212,6 @@ export class BaileysStartupService extends ChannelStartupService {
       }, 15 * 60 * 1000);
     }
   }
-
 
   public get connectionStatus() {
     return this.stateConnection;
@@ -1337,6 +1337,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       groupMetadataUpdate.forEach((group) => {
         if (isJidGroup(group.id)) {
+          console.log('updateGroupMetadataCache', group);
           this.updateGroupMetadataCache(group.id);
         }
       });
@@ -1349,6 +1350,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }) => {
       this.sendDataWebhook(Events.GROUP_PARTICIPANTS_UPDATE, participantsUpdate);
 
+      console.log('participantsUpdate', participantsUpdate);
       this.updateGroupMetadataCache(participantsUpdate.id);
     },
   };
@@ -2563,6 +2565,30 @@ export class BaileysStartupService extends ChannelStartupService {
     return await this.sendMessageWithTyping(data.number, { ...message }, {});
   }
 
+  public async verifyNumber(numbersToVerify: string[]) {
+    let numbers = null;
+    const cache = this.configService.get<CacheConf>('CACHE');
+    if (!cache.REDIS.ENABLED && !cache.LOCAL.ENABLED) {
+      numbers = await this.client.onWhatsApp(...numbersToVerify);
+    } else {
+      for (const number of numbersToVerify) {
+        if (await verifyNumbersCache.has(number)) {
+          console.log(`Cache request for number: ${number}`);
+          const dataNumber = await verifyNumbersCache.get(number);
+          if (numbers === null) numbers = [];
+          numbers = [...numbers, ...dataNumber];
+        } else {
+          console.log(`Not Cache request for number: ${number}`);
+          const numberData = await this.client.onWhatsApp(number);
+          await verifyNumbersCache.set(number, numberData);
+          if (numbers === null) numbers = [];
+          numbers = [...numbers, ...numberData];
+        }
+      }
+    }
+    return numbers;
+  }
+
   public async reactionMessage(data: SendReactionDto) {
     return await this.sendMessageWithTyping(data.key.remoteJid, {
       reactionMessage: {
@@ -2626,7 +2652,7 @@ export class BaileysStartupService extends ChannelStartupService {
     });
 
     const numbersToVerify = jids.users.map(({ jid }) => jid.replace('+', ''));
-    const verify = await this.client.onWhatsApp(...numbersToVerify);
+    const verify = await this.verifyNumber(numbersToVerify);
     const users: OnWhatsAppDto[] = await Promise.all(
       jids.users.map(async (user) => {
         let numberVerified: (typeof verify)[0] | null = null;
@@ -3169,7 +3195,7 @@ export class BaileysStartupService extends ChannelStartupService {
       this.logger.warn(`Call to updateGroupMetadataCache for ${groupJid} ignored due to rate limiting.`);
       return null;
     }
-    
+
     this.lastCalledGroupCache = now;
 
     try {
@@ -3194,24 +3220,17 @@ export class BaileysStartupService extends ChannelStartupService {
     if (await groupMetadataCache.has(groupJid)) {
       console.log(`Cache request for group: ${groupJid}`);
       const meta = await groupMetadataCache.get(groupJid);
-
-      if (Date.now() - meta.timestamp > 3600000) {
-        await this.updateGroupMetadataCache(groupJid);
-      }
-
       return meta.data;
     }
+    const meta = await this.client.groupMetadata(groupJid);
 
-    console.log(`Cache request for group: ${groupJid} - not found`);
-    return await this.updateGroupMetadataCache(groupJid);
-  }
+    this.logger.verbose(`Updating cache for group: ${groupJid}`);
+    await groupMetadataCache.set(groupJid, {
+      timestamp: Date.now(),
+      data: meta,
+    });
 
-  private async getGroupMetadata(groupJid: string) {
-    let group = null;
-    const cache = this.configService.get<CacheConf>('CACHE');
-    if (!cache.REDIS.ENABLED && !cache.LOCAL.ENABLED) group = await this.findGroup({ groupJid: groupJid }, 'inner');
-    else group = await this.getGroupMetadataCache(groupJid);
-    return group;
+    return meta;
   }
 
   public async createGroup(create: CreateGroupDto) {
@@ -3302,7 +3321,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async findGroup(id: GroupJid, reply: 'inner' | 'out' = 'out') {
     try {
-      const group = await this.getGroupMetadata(id.groupJid);
+      const group = await this.client.groupMetadata(id.groupJid);
 
       const picture = await this.profilePicture(group.id);
 
@@ -3426,7 +3445,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async findParticipants(id: GroupJid) {
     try {
-      const participants = (await this.getGroupMetadata(id.groupJid)).participants;
+      const participants = (await this.findGroup({ groupJid: id.groupJid }, 'inner')).participants;
       const contacts = await this.prismaRepository.contact.findMany({
         where: {
           instanceId: this.instanceId,

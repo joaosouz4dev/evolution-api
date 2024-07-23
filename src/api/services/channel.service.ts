@@ -1164,8 +1164,6 @@ export class ChannelStartupService {
         : this.createJid(keyFilters?.remoteJid)
       : null;
 
-    console.log(remoteJid);
-
     const count = await this.prismaRepository.message.count({
       where: {
         instanceId: this.instanceId,
