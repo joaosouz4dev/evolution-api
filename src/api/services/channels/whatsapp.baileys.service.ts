@@ -1335,12 +1335,12 @@ export class BaileysStartupService extends ChannelStartupService {
     'groups.update': (groupMetadataUpdate: Partial<GroupMetadata>[]) => {
       this.sendDataWebhook(Events.GROUPS_UPDATE, groupMetadataUpdate);
 
-      groupMetadataUpdate.forEach((group) => {
-        if (isJidGroup(group.id)) {
-          console.log('updateGroupMetadataCache', group);
-          this.updateGroupMetadataCache(group.id);
-        }
-      });
+      // groupMetadataUpdate.forEach((group) => {
+      //   if (isJidGroup(group.id)) {
+      //     console.log('updateGroupMetadataCache', group);
+      //     this.updateGroupMetadataCache(group.id);
+      //   }
+      // });
     },
 
     'group-participants.update': (participantsUpdate: {
@@ -1350,8 +1350,8 @@ export class BaileysStartupService extends ChannelStartupService {
     }) => {
       this.sendDataWebhook(Events.GROUP_PARTICIPANTS_UPDATE, participantsUpdate);
 
-      console.log('participantsUpdate', participantsUpdate);
-      this.updateGroupMetadataCache(participantsUpdate.id);
+      // console.log('participantsUpdate', participantsUpdate);
+      // this.updateGroupMetadataCache(participantsUpdate.id);
     },
   };
 
@@ -3353,14 +3353,14 @@ export class BaileysStartupService extends ChannelStartupService {
       const fetch = Object.values(await this?.client?.groupFetchAllParticipating());
       let groups = [];
       for (const group of fetch) {
-        const picture = await this.profilePicture(group.id);
+        // const picture = await this.profilePicture(group.id);
 
         const result = {
           id: group.id,
           subject: group.subject,
           subjectOwner: group.subjectOwner,
           subjectTime: group.subjectTime,
-          pictureUrl: picture.profilePictureUrl,
+          pictureUrl: false, //picture.profilePictureUrl,
           size: group.participants.length,
           creation: group.creation,
           owner: group.owner,
