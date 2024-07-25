@@ -3356,6 +3356,7 @@ export class BaileysStartupService extends ChannelStartupService {
         // const picture = await this.profilePicture(group.id);
 
         const result = {
+          ...group,
           id: group.id,
           subject: group.subject,
           subjectOwner: group.subjectOwner,
@@ -3368,6 +3369,7 @@ export class BaileysStartupService extends ChannelStartupService {
           descId: group.descId,
           restrict: group.restrict,
           announce: group.announce,
+          participants: null,
         };
 
         if (getParticipants.getParticipants == 'true') {
