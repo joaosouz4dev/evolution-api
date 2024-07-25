@@ -3376,7 +3376,7 @@ export class BaileysStartupService extends ChannelStartupService {
           result['participants'] = group.participants;
         }
 
-        groups = [...groups, result].filter((el) => !el.isCommunity && !el.isCommunityAnnounce);
+        groups = [...groups, result]?.filter((el) => !el.isCommunity && !el.isCommunityAnnounce);
       }
 
       return groups;
