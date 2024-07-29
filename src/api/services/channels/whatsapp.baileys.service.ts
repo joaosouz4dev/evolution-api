@@ -747,6 +747,7 @@ export class BaileysStartupService extends ChannelStartupService {
           profilePicUrl: null,
           instanceId: this.instanceId,
         }));
+        // console.log(contactsRaw);
 
         if (contactsRaw.length > 0) this.sendDataWebhook(Events.CONTACTS_UPSERT, contactsRaw);
 
@@ -1175,9 +1176,10 @@ export class BaileysStartupService extends ChannelStartupService {
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
           });
 
+          // console.log('received.', received);
           const contactRaw: any = {
             remoteJid: received.key.remoteJid,
-            pushName: received.pushName,
+            pushName: received.key.fromMe ? null : received.pushName,
             profilePicUrl: (await this.profilePicture(received.key.remoteJid)).profilePictureUrl,
             instanceId: this.instanceId,
           };
@@ -1212,7 +1214,7 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           this.sendDataWebhook(Events.CONTACTS_UPSERT, contactRaw);
-
+          // console.log('create 2', contactRaw);
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.CONTACTS)
             await this.prismaRepository.contact.create({
               data: contactRaw,
