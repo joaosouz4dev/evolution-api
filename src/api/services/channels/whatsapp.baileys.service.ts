@@ -3291,8 +3291,12 @@ export class BaileysStartupService extends ChannelStartupService {
       } else {
         throw new BadRequestException('"profilePicture" must be a url or a base64');
       }
+      const group = await this.client.groupMetadata(picture.groupJid);
+      if (group.isCommunityAnnounce) {
+        await this.client.updateProfilePicture(group.linkedParent, pic);
+        return { update: 'success' };
+      }
       await this.client.updateProfilePicture(picture.groupJid, pic);
-
       return { update: 'success' };
     } catch (error) {
       throw new InternalServerErrorException('Error update group picture', error.toString());
@@ -3301,8 +3305,12 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async updateGroupSubject(data: GroupSubjectDto) {
     try {
+      const group = await this.client.groupMetadata(data.groupJid);
+      if (group.isCommunityAnnounce) {
+        await this.client.groupUpdateSubject(group.linkedParent, data.subject);
+        return { update: 'success' };
+      }
       await this.client.groupUpdateSubject(data.groupJid, data.subject);
-
       return { update: 'success' };
     } catch (error) {
       throw new InternalServerErrorException('Error updating group subject', error.toString());
