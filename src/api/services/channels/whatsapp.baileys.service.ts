@@ -747,7 +747,7 @@ export class BaileysStartupService extends ChannelStartupService {
           profilePicUrl: null,
           instanceId: this.instanceId,
         }));
-        // console.log(contactsRaw);
+        // console.log('contactsRaw', contactsRaw);
 
         if (contactsRaw.length > 0) this.sendDataWebhook(Events.CONTACTS_UPSERT, contactsRaw);
 
@@ -1175,8 +1175,7 @@ export class BaileysStartupService extends ChannelStartupService {
           const contact = await this.prismaRepository.contact.findFirst({
             where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
           });
-
-          // console.log('received.', received);
+          console.log('received.', received);
           const contactRaw: any = {
             remoteJid: received.key.remoteJid,
             pushName: received.key.fromMe ? null : received.pushName,
@@ -1191,7 +1190,7 @@ export class BaileysStartupService extends ChannelStartupService {
           if (contact) {
             const contactRaw: any = {
               remoteJid: received.key.remoteJid,
-              pushName: contact.pushName,
+              pushName: contact.pushName === null ? (received.key.fromMe ? null : received.pushName) : contact.pushName,
               profilePicUrl: (await this.profilePicture(received.key.remoteJid)).profilePictureUrl,
               instanceId: this.instanceId,
             };
@@ -1206,8 +1205,9 @@ export class BaileysStartupService extends ChannelStartupService {
               );
             }
 
-            this.prismaRepository.contact.updateMany({
-              where: { remoteJid: received.key.remoteJid, instanceId: this.instanceId },
+            console.log('create 2', contactRaw);
+            await this.prismaRepository.contact.update({
+              where: { id: contact.id },
               data: contactRaw,
             });
             return;
@@ -1215,10 +1215,11 @@ export class BaileysStartupService extends ChannelStartupService {
 
           this.sendDataWebhook(Events.CONTACTS_UPSERT, contactRaw);
           // console.log('create 2', contactRaw);
-          if (this.configService.get<Database>('DATABASE').SAVE_DATA.CONTACTS)
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.CONTACTS) {
             await this.prismaRepository.contact.create({
               data: contactRaw,
             });
+          }
         }
       } catch (error) {
         this.logger.error(error);
